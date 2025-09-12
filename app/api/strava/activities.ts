@@ -1,11 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { StravaRedisService } from '../../../lib/strava-redis-vercel';
+import { StravaRedisService } from '@/lib/strava-redis-vercel';
 import type { 
   StravaActivity, 
   StravaActivityDetails, 
   StravaSearchCriteria,
   StravaActivityWithDetails 
-} from '../../../types/strava';
+} from '@/types/strava';
 
 interface GetActivitiesResponse {
   activities: StravaActivity[];
