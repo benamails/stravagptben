@@ -1,25 +1,11 @@
 {
-  "name": "stravagptben",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "seed:activities":"tsx scripts/seed-activities.ts"
-  },
   "dependencies": {
-    "next": "14.2.4",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "ioredis": "^5.3.2",
+    "@upstash/redis": "^1.25.1"
   },
   "devDependencies": {
-    "@types/node": "20.11.19",
-    "@types/react": "18.3.4",
-    "@types/react-dom": "18.3.2",
-    "eslint": "8.57.0",
-    "eslint-config-next": "14.2.4",
-    "typescript": "5.5.4"
+    "@types/node": "^20.8.0",
+    "@types/ioredis": "^5.0.0",
+    "typescript": "^5.2.2"
   }
 }
