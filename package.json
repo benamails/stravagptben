@@ -22,3 +22,9 @@
     "typescript": "5.5.4"
   }
 }
+
+{
+  "scripts": {
+    "seed:activities": "tsx scripts/seed-activities.ts"
+  }
+}
