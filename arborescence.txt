@@ -1,0 +1,20 @@
+stravagpt/
+├── .gitignore
+├── app/
+│   └── api/
+│       ├── activities/
+│       │   └── route.ts
+│       └── strava/
+│           ├── activities.ts
+│           ├── import.ts
+│           └── status.ts
+├── lib/
+│   ├── redis.ts
+│   └── strava-redis-vercel.ts
+├── next-env.d.ts
+├── next.config.mjs
+├── package.json
+├── readme.md
+├── tsconfig.json
+└── types/
+    └── activities.ts
