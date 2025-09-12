@@ -1,4 +1,4 @@
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { StravaRedisService } from '@/lib/strava-redis-vercel';
 
 export async function GET(request: NextRequest) {
@@ -7,7 +7,11 @@ export async function GET(request: NextRequest) {
     const lastSync = await StravaRedisService.getLastSync();
     
     return Response.json({
-      importStatus: importStatus || { status: 'none', progress: 0, timestamp: new Date().toISOString() },
+      importStatus: importStatus || { 
+        status: 'none', 
+        progress: 0, 
+        timestamp: new Date().toISOString() 
+      },
       lastSync,
       timestamp: new Date().toISOString()
     });

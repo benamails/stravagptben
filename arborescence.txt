@@ -5,16 +5,24 @@ stravagpt/
 │       ├── activities/
 │       │   └── route.ts
 │       └── strava/
-│           ├── activities.ts
-│           ├── import.ts
-│           └── status.ts
+│           ├── activities/
+│           │   └── route.ts
+│           ├── import/
+│           │   └── route.ts
+│           └── status/
+│               └── route.ts
+├── arbo-txt.py
+├── arborescence.txt
+├── data/
+│   └── strava_year.json
 ├── lib/
 │   ├── redis.ts
 │   └── strava-redis-vercel.ts
 ├── next-env.d.ts
 ├── next.config.mjs
+├── package-lock.json
 ├── package.json
 ├── readme.md
 ├── tsconfig.json
 └── types/
-    └── activities.ts
+    └── strava.ts

@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { NextRequest } from 'next/server';
 import { StravaRedisService } from '@/lib/strava-redis-vercel';
 import type { 
   StravaActivity, 
@@ -7,124 +7,81 @@ import type {
   StravaActivityWithDetails 
 } from '@/types/strava';
 
-interface GetActivitiesResponse {
-  activities: StravaActivity[];
-  count: number;
-  criteria: StravaSearchCriteria;
-}
-
-interface PostActivityResponse {
-  activity: StravaActivity;
-  details?: StravaActivityDetails;
-  message: string;
-}
-
-interface ErrorResponse {
-  error: string;
-  message?: string;
-}
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<
-    StravaActivityWithDetails | GetActivitiesResponse | PostActivityResponse | ErrorResponse
-  >
-) {
+export async function GET(request: NextRequest) {
   try {
-    switch (req.method) {
-      case 'GET':
-        return await handleGet(req, res);
-      case 'POST':
-        return await handlePost(req, res);
-      default:
-        res.setHeader('Allow', ['GET', 'POST']);
-        return res.status(405).json({ error: 'Method not allowed' });
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+    const sportType = searchParams.get('sportType');
+    const limit = searchParams.get('limit');
+    const includeDetails = searchParams.get('includeDetails');
+
+    // Récupérer une activité spécifique
+    if (id) {
+      const activity = await StravaRedisService.getActivity(
+        id, 
+        includeDetails === 'true'
+      );
+      
+      if (!activity) {
+        return Response.json({ error: 'Activity not found' }, { status: 404 });
+      }
+      
+      return Response.json(activity);
     }
+
+    // Rechercher des activités
+    const criteria: StravaSearchCriteria = {
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      sportType: sportType || undefined,
+      limit: limit ? parseInt(limit) : undefined
+    };
+
+    const activities = await StravaRedisService.searchActivities(criteria);
+    
+    return Response.json({
+      activities,
+      count: activities.length,
+      criteria
+    });
   } catch (error) {
     console.error('API Error:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-async function handleGet(
-  req: NextApiRequest,
-  res: NextApiResponse<StravaActivityWithDetails | GetActivitiesResponse | ErrorResponse>
-) {
-  const { 
-    id, 
-    startDate, 
-    endDate, 
-    sportType, 
-    limit, 
-    includeDetails 
-  } = req.query;
+export async function POST(request: NextRequest) {
+  try {
+    const { activity, details }: { 
+      activity: StravaActivity; 
+      details?: StravaActivityDetails 
+    } = await request.json();
 
-  // Récupérer une activité spécifique
-  if (id && typeof id === 'string') {
-    const activity = await StravaRedisService.getActivity(
-      id, 
-      includeDetails === 'true'
-    );
-    
-    if (!activity) {
-      return res.status(404).json({ error: 'Activity not found' });
+    if (!activity || !activity.id) {
+      return Response.json({ error: 'Activity data with ID required' }, { status: 400 });
     }
-    
-    return res.status(200).json(activity);
+
+    // Sauvegarder l'activité de base
+    const savedActivity = await StravaRedisService.saveActivity(activity);
+
+    // Sauvegarder les détails si fournis
+    let savedDetails: StravaActivityDetails | undefined;
+    if (details) {
+      savedDetails = await StravaRedisService.saveActivityDetails(
+        activity.id, 
+        details
+      );
+    }
+
+    return Response.json({
+      activity: savedActivity,
+      details: savedDetails,
+      message: 'Activity saved successfully'
+    }, { status: 201 });
+  } catch (error) {
+    console.error('API Error:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-
-  // Rechercher des activités
-  const criteria: StravaSearchCriteria = {
-    startDate: typeof startDate === 'string' ? startDate : undefined,
-    endDate: typeof endDate === 'string' ? endDate : undefined,
-    sportType: typeof sportType === 'string' ? sportType : undefined,
-    limit: limit ? parseInt(limit as string) : undefined
-  };
-
-  const activities = await StravaRedisService.searchActivities(criteria);
-  
-  const response: GetActivitiesResponse = {
-    activities,
-    count: activities.length,
-    criteria
-  };
-  
-  return res.status(200).json(response);
-}
-
-async function handlePost(
-  req: NextApiRequest,
-  res: NextApiResponse<PostActivityResponse | ErrorResponse>
-) {
-  const { activity, details }: { activity: StravaActivity; details?: StravaActivityDetails } = req.body;
-
-  if (!activity || !activity.id) {
-    return res.status(400).json({ error: 'Activity data with ID required' });
-  }
-
-  // Sauvegarder l'activité de base
-  const savedActivity = await StravaRedisService.saveActivity(activity);
-
-  // Sauvegarder les détails si fournis
-  let savedDetails: StravaActivityDetails | undefined;
-  if (details) {
-    savedDetails = await StravaRedisService.saveActivityDetails(
-      activity.id, 
-      details
-    );
-  }
-
-  const response: PostActivityResponse = {
-    activity: savedActivity,
-    message: 'Activity saved successfully'
-  };
-
-  if (savedDetails) {
-    response.details = savedDetails;
-  }
-
-  return res.status(201).json(response);
 }

@@ -1,6 +1,6 @@
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { StravaRedisService } from '@/lib/strava-redis-vercel';
-import type { StravaActivity, ImportResult } from '@/types/strava';
+import type { StravaActivity } from '@/types/strava';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
     let errors = 0;
     const errorDetails: string[] = [];
 
+    // Traitement par batch
     for (let i = 0; i < activitiesToProcess.length; i += batchSize) {
       const batch = activitiesToProcess.slice(i, i + batchSize);
       
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
           return { success: true, id: activity.id };
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`Error saving activity ${activity.id}:`, error);
           errorDetails.push(`Activity ${activity.id}: ${errorMsg}`);
           return { success: false, id: activity.id, error: errorMsg };
         }
@@ -39,7 +41,8 @@ export async function POST(request: NextRequest) {
       processed += results.filter(r => r.success).length;
       errors += results.filter(r => !r.success).length;
 
-      const progress = Math.round((processed / activitiesToProcess.length) * 100);
+      // Mise à jour du statut
+      const progress = Math.round(((i + batch.length) / activitiesToProcess.length) * 100);
       await StravaRedisService.setImportStatus('processing', progress);
     }
 

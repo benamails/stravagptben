@@ -1,37 +1,31 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from 'next/server';
 
-function cors() {
-  return {
-    "Access-Control-Allow-Origin": "https://chat.openai.com",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { headers: cors() });
-}
-
-export async function GET() {
-  const url = process.env.MAKE_WEBHOOK_URL_BEN_ACTIVITIES;
-  if (!url) {
-    return NextResponse.json(
-      { ok: false, error: "MAKE_WEBHOOK_URL is not set" },
-      { status: 500, headers: cors() }
-    );
+export async function GET(request: NextRequest) {
+  try {
+    // Route générique - peut rediriger vers Strava ou d'autres sources
+    const { searchParams } = new URL(request.url);
+    const source = searchParams.get('source') || 'strava';
+    
+    if (source === 'strava') {
+      // Rediriger vers l'API Strava spécifique
+      const stravaUrl = new URL('/api/strava/activities', request.url);
+      // Copier tous les paramètres
+      searchParams.forEach((value, key) => {
+        if (key !== 'source') {
+          stravaUrl.searchParams.set(key, value);
+        }
+      });
+      
+      return Response.redirect(stravaUrl.toString(), 302);
+    }
+    
+    return Response.json({ 
+      message: 'Generic activities endpoint',
+      availableSources: ['strava'],
+      usage: 'Add ?source=strava to your request'
+    });
+  } catch (error) {
+    console.error('API Error:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-
-  // (Optionnel) Si tu as mis un header d’auth côté Make
-  const headers: Record<string, string> = {};
-  if (process.env.MAKE_API_KEY_BEN) headers["x-make-apikey"] = process.env.MAKE_API_KEY_BEN;
-
-  const upstream = await fetch(url, { headers, cache: "no-store" });
-  const text = await upstream.text(); // on ne suppose pas le format, on relaye
-
-  // Relais brut + même content-type si possible
-  const contentType = upstream.headers.get("content-type") ?? "application/json; charset=utf-8";
-  return new NextResponse(text, {
-    status: upstream.status,
-    headers: { ...cors(), "content-type": contentType },
-  });
 }
