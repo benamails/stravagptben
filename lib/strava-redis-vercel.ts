@@ -1,10 +1,10 @@
 import redis from './redis';
-import type { 
-  StravaActivity, 
-  StravaActivityDetails, 
-  StravaSearchCriteria, 
+import type {
+  StravaActivity,
+  StravaActivityDetails,
+  StravaSearchCriteria,
   ImportStatus,
-  StravaActivityWithDetails 
+  StravaActivityWithDetails
 } from '@/types/strava';
 
 export class StravaRedisService {
@@ -61,7 +61,7 @@ export class StravaRedisService {
 
   // Sauvegarder les détails d'une activité
   static async saveActivityDetails(
-    activityId: string | number, 
+    activityId: string | number,
     details: StravaActivityDetails
   ): Promise<StravaActivityDetails> {
     const key = this.keys.activityDetails(activityId);
@@ -77,7 +77,7 @@ export class StravaRedisService {
 
   // Récupérer activité avec gestion d'erreur
   static async getActivity(
-    activityId: string | number, 
+    activityId: string | number,
     includeDetails: boolean = false
   ): Promise<StravaActivityWithDetails | null> {
     try {
@@ -91,9 +91,9 @@ export class StravaRedisService {
 
       if (includeDetails) {
         const details = await redis.hgetall(this.keys.activityDetails(activityId));
-        return { 
-          ...activity, 
-          details: Object.keys(details).length > 0 ? details as StravaActivityDetails : undefined 
+        return {
+          ...activity,
+          details: Object.keys(details).length > 0 ? details as StravaActivityDetails : undefined
         };
       }
 
