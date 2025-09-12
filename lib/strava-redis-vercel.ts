@@ -179,7 +179,7 @@ export class StravaRedisService {
   static async getImportStatus(): Promise<ImportStatus | null> {
     const status = await redis.hgetall(this.keys.importStatus());
     // ✅ CORRECTION : Vérifier que status existe et n'est pas null
-    return (status && Object.keys(status).length > 0) ? status as ImportStatus : null;
+    return (status && Object.keys(status).length > 0) ? (status as unknown) as ImportStatus : null;
   }
 
   // Mettre à jour le timestamp de dernière synchronisation
