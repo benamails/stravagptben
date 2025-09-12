@@ -1,6 +1,5 @@
-// app/api/activities/query/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { redis } from "@/lib/redis";
+import { redis } from "@/lib/redis"; // ou relatif
 export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
@@ -15,10 +14,9 @@ export async function GET(req: NextRequest) {
   if (type) key = `idx:byType:${type}`;
   if (athlete) key = `idx:athlete:${athlete}:byStartDate`;
 
-  const members = await redis.zrangebyscore(key, from, to, { withScores:false, limit:{offset:0, count:limit}});
+  const members = await redis.zrangebyscore(key, from, to, { withScores:false, limit:{ offset:0, count:limit }});
   const pipeline = members.map((k:string)=>["HGET", k, "raw"] as const);
   const raws = pipeline.length ? await redis.pipeline(pipeline).exec() : [];
-  // Parse JSON blob à la volée (schema-on-read)
   const activities = raws.map((s:any)=>{ try { return JSON.parse(s as string); } catch { return null; } }).filter(Boolean);
 
   return NextResponse.json({ ok:true, count:activities.length, activities });
