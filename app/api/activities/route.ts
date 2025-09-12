@@ -13,7 +13,7 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
-  const url = process.env.MAKE_WEBHOOK_URL;
+  const url = process.env.MAKE_WEBHOOK_URL_BEN_ACTIVITIES;
   if (!url) {
     return NextResponse.json(
       { ok: false, error: "MAKE_WEBHOOK_URL is not set" },
@@ -23,7 +23,7 @@ export async function GET() {
 
   // (Optionnel) Si tu as mis un header d’auth côté Make
   const headers: Record<string, string> = {};
-  if (process.env.MAKE_API_KEY) headers["x-make-apikey"] = process.env.MAKE_API_KEY;
+  if (process.env.MAKE_API_KEY_BEN) headers["x-make-apikey"] = process.env.MAKE_API_KEY_BEN;
 
   const upstream = await fetch(url, { headers, cache: "no-store" });
   const text = await upstream.text(); // on ne suppose pas le format, on relaye
