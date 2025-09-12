@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seed:activities":"tsx scripts/seed-activities.ts"
   },
   "dependencies": {
     "next": "14.2.4",
@@ -20,11 +21,5 @@
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.4",
     "typescript": "5.5.4"
-  }
-}
-
-{
-  "scripts": {
-    "seed:activities": "tsx scripts/seed-activities.ts"
   }
 }
