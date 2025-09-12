@@ -75,7 +75,7 @@ export class StravaRedisService {
     return detailsData;
   }
 
-  // Récupérer activité avec gestion d'erreur
+  // Récupérer activité avec gestion d'erreur - CORRECTION ICI
   static async getActivity(
     activityId: string | number,
     includeDetails: boolean = false
@@ -93,7 +93,8 @@ export class StravaRedisService {
         const details = await redis.hgetall(this.keys.activityDetails(activityId));
         return {
           ...activity,
-          details: Object.keys(details).length > 0 ? details as StravaActivityDetails : undefined
+          // ✅ CORRECTION : Vérifier que details existe et n'est pas null avant Object.keys()
+          details: (details && Object.keys(details).length > 0) ? details as StravaActivityDetails : undefined
         };
       }
 
@@ -164,7 +165,7 @@ export class StravaRedisService {
     }
   }
 
-  // Statut d'import pour le monitoring
+  // Statut d'import pour le monitoring - CORRECTION ICI AUSSI
   static async setImportStatus(status: ImportStatus['status'], progress: number = 0): Promise<void> {
     const statusData: ImportStatus = {
       status,
@@ -177,7 +178,8 @@ export class StravaRedisService {
 
   static async getImportStatus(): Promise<ImportStatus | null> {
     const status = await redis.hgetall(this.keys.importStatus());
-    return Object.keys(status).length > 0 ? status as ImportStatus : null;
+    // ✅ CORRECTION : Vérifier que status existe et n'est pas null
+    return (status && Object.keys(status).length > 0) ? status as ImportStatus : null;
   }
 
   // Mettre à jour le timestamp de dernière synchronisation
