@@ -1,4 +1,4 @@
-// app/api/activities/route.ts
+// app/api/activities/route.ts - add to push
 
 import { NextRequest, NextResponse } from 'next/server';
 import redis from '@/lib/redis';
