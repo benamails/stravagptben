@@ -1,9 +1,12 @@
 // app/api/admin/strava-import-robust/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 
 // Initialize Redis client (adapt to your config)
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 interface RateLimitInfo {
   shortTerm: { limit: number; usage: number };
