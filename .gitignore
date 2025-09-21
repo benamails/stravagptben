@@ -9,3 +9,7 @@ data/
 *.py
 *.zip
 .next
+app/api/debug/
+app/api/gpt/activities-debug/
+app/api/gpt/activities-direct/
+app/api/gpt/activities-test/

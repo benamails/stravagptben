@@ -188,7 +188,7 @@ async function refreshUserToken(userId: number, refreshToken: string): Promise<S
   }
 }
 
-// ⭐ FONCTION INTELLIGENTE : Récupérer les activités brutes avec filtre flexible
+// ⭐ FONCTION INTELLIGENTE : Récupérer les activités brutes avec gestion multi-format des dates
 export async function getUserRawActivities(userId: number, limit: number = 10): Promise<StravaActivity[]> {
   try {
     const { default: redis } = await import('./redis');
@@ -227,6 +227,21 @@ export async function getUserRawActivities(userId: number, limit: number = 10): 
         }
       }
     }
+    
+    // ⭐ CORRECTION : Tri intelligent avec gestion multi-format des dates
+    activities.sort((a, b) => {
+      // Chercher la date dans plusieurs champs possibles (anciennes vs nouvelles activités)
+      const dateA = a.start_date || a.date || a.start_date_local;
+      const dateB = b.start_date || b.date || b.start_date_local;
+      
+      if (!dateA || !dateB) return 0;
+      
+      try {
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      } catch (e) {
+        return 0; // En cas d'erreur de parsing de date
+      }
+    });
     
     console.log(`✅ ${activities.length} activités récupérées pour userId=${userId}`);
     
@@ -270,16 +285,69 @@ export async function initializeLastActivityTimestamp(): Promise<void> {
             ? JSON.parse(activityData) 
             : activityData;
           
-          await updateLastActivityTimestamp(activity.start_date);
-          console.log('📅 Timestamp initialisé depuis la première activité');
+          // ⭐ CORRECTION : Chercher la date dans plusieurs champs
+          const activityDate = activity.start_date || activity.date || activity.start_date_local;
+          
+          if (activityDate) {
+            await updateLastActivityTimestamp(activityDate);
+            console.log('📅 Timestamp initialisé depuis la première activité');
+          } else {
+            // Pas de date trouvée, initialiser à maintenant
+            await redis.set('activities:last_activity', Date.now().toString());
+            console.log('📅 Timestamp initialisé à maintenant (pas de date trouvée)');
+          }
         }
       } else {
         // Pas d'activités, initialiser à maintenant
         await redis.set('activities:last_activity', Date.now().toString());
-        console.log('📅 Timestamp initialisé à maintenant');
+        console.log('📅 Timestamp initialisé à maintenant (pas d\'activités)');
       }
     }
   } catch (error) {
     console.error('❌ Erreur initialisation timestamp:', error);
+  }
+}
+
+// ⭐ NOUVELLE FONCTION : Récupérer une activité spécifique avec gestion des dates
+export async function getActivityById(activityId: number): Promise<StravaActivity | null> {
+  try {
+    const { default: redis } = await import('./redis');
+    
+    const activityData = await redis.get(`activity:${activityId}`);
+    
+    if (activityData) {
+      const parsedActivity = typeof activityData === 'string' 
+        ? JSON.parse(activityData) 
+        : activityData;
+      
+      return parsedActivity;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`❌ Erreur récupération activité ${activityId}:`, error);
+    return null;
+  }
+}
+
+// ⭐ FONCTION UTILITAIRE : Extraire la date d'une activité de manière intelligente
+export function getActivityDate(activity: any): string | null {
+  // Ordre de priorité pour les champs de date
+  return activity.start_date || activity.date || activity.start_date_local || null;
+}
+
+// ⭐ FONCTION UTILITAIRE : Vérifier si une activité est récente
+export function isActivityRecent(activity: any, daysBack: number = 7): boolean {
+  const activityDate = getActivityDate(activity);
+  
+  if (!activityDate) return false;
+  
+  try {
+    const activityTimestamp = new Date(activityDate).getTime();
+    const cutoffTimestamp = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
+    
+    return activityTimestamp >= cutoffTimestamp;
+  } catch (e) {
+    return false;
   }
 }
