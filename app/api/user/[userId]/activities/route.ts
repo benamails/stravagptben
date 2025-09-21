@@ -1,7 +1,5 @@
-// app/api/user/[userId]/activities/route.ts - push
-
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserRawActivities } from '@/lib/activity-processor';
+import { getUserRawActivities, getActivityDate } from '@/lib/activity-processor';
 import { getActivityDetails, hasActivityDetails } from '@/lib/redis';
 
 export async function GET(
@@ -48,10 +46,22 @@ export async function GET(
       }
     }
     
-    // Trier par date (plus récent en premier)
-    activities.sort((a, b) => 
-      new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
-    );
+    // ⭐ CORRECTION : Trier par date avec gestion des dates undefined
+    activities.sort((a, b) => {
+      const dateA = getActivityDate(a);
+      const dateB = getActivityDate(b);
+      
+      // Si pas de date, mettre à la fin
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      
+      try {
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      } catch (e) {
+        return 0; // En cas d'erreur de parsing
+      }
+    });
     
     return NextResponse.json({
       success: true,
@@ -64,6 +74,7 @@ export async function GET(
       },
       activities: activities
     });
+    
   } catch (error) {
     console.error('❌ Erreur récupération activités utilisateur:', error);
     return NextResponse.json(
