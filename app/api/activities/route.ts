@@ -94,18 +94,18 @@ async function getActivitiesByUser(userId: number, limit: number, typeFilter?: s
 async function getAllActivitiesWithScan(limit: number, typeFilter?: string | null): Promise<any[]> {
   try {
     const activities = [];
-    let cursor = 0;
+    let cursor: string = "0"; // ⭐ CORRECTION : cursor est un string, pas un number
     let scanCount = 0;
-    const maxScans = 10; // Limiter le nombre de scans pour éviter les timeouts
+    const maxScans = 10;
     
     do {
       // Utiliser SCAN au lieu de KEYS
       const result = await redis.scan(cursor, {
         match: 'activity:*',
-        count: 50 // Récupérer 50 clés par scan
+        count: 50
       });
       
-      cursor = result[0];
+      cursor = result[0]; // ⭐ CORRECTION : result[0] est un string
       const keys = result[1];
       
       // Traiter les clés trouvées
@@ -138,7 +138,7 @@ async function getAllActivitiesWithScan(limit: number, typeFilter?: string | nul
         break;
       }
       
-    } while (cursor !== 0);
+    } while (cursor !== "0"); // ⭐ CORRECTION : comparer avec "0" string, pas 0 number
     
     console.log(`📊 SCAN terminé: ${activities.length} activités trouvées en ${scanCount} scans`);
     return activities;
