@@ -4,26 +4,6 @@ import { StravaClient } from './strava-client';
 import { getStoredUserToken, storeUserToken, storeActivityDetails } from './redis';
 import { StravaActivity, StravaTokens, StravaActivityDetails } from '@/types/strava';
 
-// Interface pour le format de données souhaité
-interface FormattedActivity {
-  date: string;
-  type: string;
-  avg_hr: number | null;
-  charge: number | null;
-  commute: boolean;
-  avg_watts: string | null;
-  elevation: number;
-  intensity: number | null;
-  upload_id: number;
-  activity_id: number;
-  avg_cadence: number | null;
-  time_moving: number;
-  suffer_score: number | null;
-  time_elapsed: number;
-  distance_meter: number;
-  userId: number; // ⭐ Ajout du userId pour les requêtes
-}
-
 export async function fetchAndProcessActivity(activityId: number, ownerId: number): Promise<void> {
   try {
     // Récupérer les tokens de l'utilisateur depuis Redis
@@ -76,15 +56,10 @@ async function processActivity(activity: StravaActivity, ownerId: number): Promi
   try {
     console.log(`🔄 Traitement de l'activité ${activity.id} pour l'utilisateur ${ownerId}`);
     
-    // Formatter les données dans le format souhaité
-    const formattedActivity: FormattedActivity = formatActivityData(activity, ownerId);
+    // ⭐ NOUVEAU : Stocker l'activité brute avec tracking
+    await storeRawActivity(activity, ownerId);
     
-    console.log('📋 Données formatées:', formattedActivity);
-    
-    // Stocker l'activité formatée
-    await storeFormattedActivity(formattedActivity, ownerId);
-    
-    // ⭐ NOUVEAU : Récupérer les détails pour les activités de course
+    // ⭐ Récupérer les détails pour les activités de course
     if (StravaClient.shouldFetchDetails(activity)) {
       console.log(`🏃 Récupération des détails pour l'activité de type ${activity.type}`);
       await fetchAndStoreActivityDetails(activity.id, ownerId);
@@ -98,7 +73,62 @@ async function processActivity(activity: StravaActivity, ownerId: number): Promi
   }
 }
 
-// ⭐ Nouvelle fonction pour récupérer et stocker les détails
+// ⭐ NOUVELLE FONCTION : Stocker l'activité brute avec tracking timestamp
+async function storeRawActivity(activity: StravaActivity, ownerId: number): Promise<void> {
+  try {
+    // Ajouter quelques métadonnées utiles
+    const enrichedActivity = {
+      ...activity,
+      userId: ownerId, // Ajouter l'userId pour les filtres
+      processed_at: new Date().toISOString(),
+      owner_id: ownerId // Pour compatibilité
+    };
+    
+    // Stocker avec la nouvelle structure (sans :raw maintenant)
+    const key = `activity:${activity.id}`;
+    
+    const { default: redis } = await import('./redis');
+    
+    // Stocker l'activité brute avec expiration de 90 jours
+    await redis.setex(key, 90 * 24 * 60 * 60, JSON.stringify(enrichedActivity));
+    
+    // ⭐ Ajouter à la liste globale
+    await redis.lpush('activities:ids', activity.id.toString());
+    
+    // Garder seulement les 500 dernières activités dans la liste
+    await redis.ltrim('activities:ids', 0, 499);
+    
+    // ⭐ NOUVEAU: Tracker la dernière activité
+    await updateLastActivityTimestamp(activity.start_date);
+    
+    console.log(`💾 Activité brute stockée: ${key}`);
+    
+  } catch (error) {
+    console.error('❌ Erreur lors du stockage de l\'activité brute:', error);
+    throw error;
+  }
+}
+
+// ⭐ NOUVELLE FONCTION : Mettre à jour le timestamp de dernière activité
+async function updateLastActivityTimestamp(activityDate: string): Promise<void> {
+  try {
+    const { default: redis } = await import('./redis');
+    const timestamp = new Date(activityDate).getTime();
+    
+    // Récupérer l'ancien timestamp
+    const currentTimestamp = await redis.get('activities:last_activity');
+    
+    // Mettre à jour seulement si plus récent
+    if (!currentTimestamp || timestamp > parseInt(currentTimestamp)) {
+      await redis.set('activities:last_activity', timestamp.toString());
+      console.log(`📅 Dernière activité mise à jour: ${activityDate}`);
+    }
+  } catch (error) {
+    console.error('❌ Erreur mise à jour timestamp:', error);
+  }
+}
+
+// Fonction pour récupérer et stocker les détails
 async function fetchAndStoreActivityDetails(activityId: number, ownerId: number): Promise<void> {
   try {
     // Récupérer le token utilisateur
@@ -158,97 +188,16 @@ async function refreshUserToken(userId: number, refreshToken: string): Promise<S
   }
 }
 
-function formatActivityData(activity: StravaActivity, userId: number): FormattedActivity {
-  // Calculer la charge (Training Stress Score approximatif)
-  const charge = calculateCharge(activity);
-  
-  // Calculer l'intensité
-  const intensity = calculateIntensity(activity);
-  
-  return {
-    date: activity.start_date,
-    type: activity.type,
-    avg_hr: activity.average_heartrate || null,
-    charge: charge,
-    commute: (activity as any).commute || false, // Strava a ce champ
-    avg_watts: activity.average_watts ? activity.average_watts.toString() : null,
-    elevation: Math.round(activity.total_elevation_gain || 0),
-    intensity: intensity,
-    upload_id: (activity as any).upload_id || 0, // Strava a ce champ
-    activity_id: activity.id,
-    avg_cadence: (activity as any).average_cadence || null, // Strava a ce champ
-    time_moving: activity.moving_time,
-    suffer_score: (activity as any).suffer_score || null, // Strava a ce champ
-    time_elapsed: activity.elapsed_time,
-    distance_meter: Math.round(activity.distance),
-    userId: userId // ⭐ Ajout du userId
-  };
-}
-
-function calculateCharge(activity: StravaActivity): number | null {
-  // Calcul de la charge basé sur HR et durée
-  if (!activity.average_heartrate || !activity.moving_time) {
-    return null;
-  }
-  
-  // Formule approximative : (HR moyenne / HR max estimée) * durée en minutes * facteur
-  const estimatedMaxHR = 220 - 35; // Estimation pour un athlète de 35 ans, à ajuster
-  const hrIntensity = activity.average_heartrate / estimatedMaxHR;
-  const durationMinutes = activity.moving_time / 60;
-  const charge = hrIntensity * durationMinutes * 1.2; // Facteur d'ajustement
-  
-  return Math.round(charge * 100) / 100;
-}
-
-function calculateIntensity(activity: StravaActivity): number | null {
-  // Calcul de l'intensité basé sur la vitesse et la FC
-  if (!activity.average_heartrate) {
-    return null;
-  }
-  
-  // Intensité basée sur le ratio FC/vitesse
-  const speed = activity.average_speed || 1;
-  const intensity = (activity.average_heartrate * speed) / 100;
-  
-  return Math.round(intensity * 1000) / 1000;
-}
-
-async function storeFormattedActivity(activityData: FormattedActivity, ownerId: number): Promise<void> {
-  try {
-    // ⭐ Nouvelle structure : activity:{id}
-    const key = `activity:${activityData.activity_id}`;
-    
-    const { default: redis } = await import('./redis');
-    
-    // Stocker l'activité formatée avec expiration de 30 jours
-    await redis.setex(key, 30 * 24 * 60 * 60, JSON.stringify(activityData));
-    
-    // ⭐ Optionnel : garder aussi une liste par utilisateur pour faciliter les requêtes
-    const userActivitiesKey = `user:${ownerId}:activities`;
-    await redis.lpush(userActivitiesKey, activityData.activity_id.toString());
-    
-    // Garder seulement les 100 dernières activités par utilisateur
-    await redis.ltrim(userActivitiesKey, 0, 99);
-    
-    console.log(`💾 Activité stockée: ${key}`);
-    
-  } catch (error) {
-    console.error('❌ Erreur lors du stockage de l\'activité formatée:', error);
-    throw error;
-  }
-}
-
-// Fonction utilitaire pour récupérer les activités formatées
-export async function getUserFormattedActivities(userId: number, limit: number = 10): Promise<FormattedActivity[]> {
+// Fonction utilitaire pour récupérer les activités brutes
+export async function getUserRawActivities(userId: number, limit: number = 10): Promise<StravaActivity[]> {
   try {
     const { default: redis } = await import('./redis');
     
-    // Récupérer la liste des IDs d'activités de l'utilisateur
-    const userActivitiesKey = `user:${userId}:activities`;
-    const activityIds = await redis.lrange(userActivitiesKey, 0, limit - 1);
+    // Récupérer la liste des IDs d'activités depuis la liste globale
+    const activityIds = await redis.lrange('activities:ids', 0, limit - 1);
     
     // Récupérer les données complètes de chaque activité
-    const activities: FormattedActivity[] = [];
+    const activities: StravaActivity[] = [];
     
     for (const activityId of activityIds) {
       const activityKey = `activity:${activityId}`;
@@ -258,13 +207,64 @@ export async function getUserFormattedActivities(userId: number, limit: number =
         const parsedActivity = typeof activityData === 'string' 
           ? JSON.parse(activityData) 
           : activityData;
-        activities.push(parsedActivity);
+        
+        // Filtrer par userId si spécifié
+        if (parsedActivity.userId === userId || !userId) {
+          activities.push(parsedActivity);
+        }
       }
     }
     
     return activities;
   } catch (error) {
-    console.error('❌ Erreur lors de la récupération des activités formatées:', error);
+    console.error('❌ Erreur lors de la récupération des activités brutes:', error);
     return [];
+  }
+}
+
+// ⭐ NOUVELLE FONCTION : Récupérer le timestamp de dernière activité
+export async function getLastActivityTimestamp(): Promise<number | null> {
+  try {
+    const { default: redis } = await import('./redis');
+    const timestamp = await redis.get('activities:last_activity');
+    
+    return timestamp ? parseInt(timestamp) : null;
+  } catch (error) {
+    console.error('❌ Erreur récupération timestamp:', error);
+    return null;
+  }
+}
+
+// ⭐ NOUVELLE FONCTION : Initialiser le timestamp si pas présent
+export async function initializeLastActivityTimestamp(): Promise<void> {
+  try {
+    const { default: redis } = await import('./redis');
+    
+    // Vérifier s'il existe déjà
+    const exists = await redis.exists('activities:last_activity');
+    
+    if (!exists) {
+      // Récupérer la première activité de la liste pour initialiser
+      const firstActivityId = await redis.lindex('activities:ids', 0);
+      
+      if (firstActivityId) {
+        const activityData = await redis.get(`activity:${firstActivityId}`);
+        
+        if (activityData) {
+          const activity = typeof activityData === 'string' 
+            ? JSON.parse(activityData) 
+            : activityData;
+          
+          await updateLastActivityTimestamp(activity.start_date);
+          console.log('📅 Timestamp initialisé depuis la première activité');
+        }
+      } else {
+        // Pas d'activités, initialiser à maintenant
+        await redis.set('activities:last_activity', Date.now().toString());
+        console.log('📅 Timestamp initialisé à maintenant');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Erreur initialisation timestamp:', error);
   }
 }
