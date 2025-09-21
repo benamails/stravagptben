@@ -1,13 +1,6 @@
-// app/api/gpt/activities/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRawActivities, getActivityDate, isActivityRecent } from '@/lib/activity-processor';
 import { getActivityDetails, hasActivityDetails } from '@/lib/redis';
-
-type FlexibleStravaActivity = StravaActivity & {
-  [key: string]: any;
-};
-const activity = allActivities[i] as FlexibleStravaActivity;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -70,39 +63,39 @@ export async function GET(request: NextRequest) {
             
             // Date et durée
             date: activityDate,
-            date_local: activity.start_date_local || activityDate,
+            date_local: (activity as any).start_date_local || activityDate,
             duration_seconds: activity.moving_time || activity.elapsed_time || 0,
             duration_minutes: Math.round((activity.moving_time || activity.elapsed_time || 0) / 60),
             
             // Distance et élévation
             distance_meters: activity.distance || 0,
             distance_km: Math.round((activity.distance || 0) / 100) / 10, // 1 décimale
-            elevation_gain_meters: Math.round(activity.total_elevation_gain || 0),
+            elevation_gain_meters: Math.round((activity as any).total_elevation_gain || 0),
             
             // Performance
             average_speed_kmh: activity.average_speed ? Math.round(activity.average_speed * 3.6 * 10) / 10 : null,
-            max_speed_kmh: activity.max_speed ? Math.round(activity.max_speed * 3.6 * 10) / 10 : null,
-            average_heartrate: activity.average_heartrate || null,
-            max_heartrate: activity.max_heartrate || null,
-            average_power: activity.average_watts || null,
-            max_power: activity.max_watts || null,
-            average_cadence: activity.average_cadence || null,
+            max_speed_kmh: (activity as any).max_speed ? Math.round((activity as any).max_speed * 3.6 * 10) / 10 : null,
+            average_heartrate: (activity as any).average_heartrate || null,
+            max_heartrate: (activity as any).max_heartrate || null,
+            average_power: (activity as any).average_watts || null,
+            max_power: (activity as any).max_watts || null,
+            average_cadence: (activity as any).average_cadence || null,
             
             // Calories et effort
-            calories: activity.calories || null,
-            suffer_score: activity.suffer_score || null,
+            calories: (activity as any).calories || null,
+            suffer_score: (activity as any).suffer_score || null,
             
             // Contexte
-            commute: activity.commute || false,
-            trainer: activity.trainer || false,
-            manual: activity.manual || false,
+            commute: (activity as any).commute || false,
+            trainer: (activity as any).trainer || false,
+            manual: (activity as any).manual || false,
             
             // Achievements et kudos
-            achievement_count: activity.achievement_count || 0,
-            kudos_count: activity.kudos_count || 0,
+            achievement_count: (activity as any).achievement_count || 0,
+            kudos_count: (activity as any).kudos_count || 0,
             
             // Météo (si disponible)
-            temperature: activity.average_temp || null,
+            temperature: (activity as any).average_temp || null,
             
             // Flag pour savoir si des détails sont disponibles
             has_details: false
@@ -148,35 +141,35 @@ export async function GET(request: NextRequest) {
       
       // Compteurs généraux
       total_activities: activities.length,
-      activity_types: [...new Set(activities.map(a => a.type))],
+      activity_types: [...new Set(activities.map((a: any) => a.type))],
       
       // Volumes totaux
-      total_distance_km: Math.round(activities.reduce((sum, a) => sum + (a.distance_km || 0), 0) * 10) / 10,
-      total_duration_hours: Math.round(activities.reduce((sum, a) => sum + (a.duration_minutes || 0), 0) / 60 * 10) / 10,
-      total_elevation_meters: activities.reduce((sum, a) => sum + (a.elevation_gain_meters || 0), 0),
+      total_distance_km: Math.round(activities.reduce((sum, a: any) => sum + (a.distance_km || 0), 0) * 10) / 10,
+      total_duration_hours: Math.round(activities.reduce((sum, a: any) => sum + (a.duration_minutes || 0), 0) / 60 * 10) / 10,
+      total_elevation_meters: activities.reduce((sum, a: any) => sum + (a.elevation_gain_meters || 0), 0),
       
       // Moyennes par semaine
       avg_activities_per_week: Math.round((activities.length / days * 7) * 10) / 10,
-      avg_distance_per_week_km: Math.round((activities.reduce((sum, a) => sum + (a.distance_km || 0), 0) / days * 7) * 10) / 10,
-      avg_duration_per_week_hours: Math.round((activities.reduce((sum, a) => sum + (a.duration_minutes || 0), 0) / 60 / days * 7) * 10) / 10,
+      avg_distance_per_week_km: Math.round((activities.reduce((sum, a: any) => sum + (a.distance_km || 0), 0) / days * 7) * 10) / 10,
+      avg_duration_per_week_hours: Math.round((activities.reduce((sum, a: any) => sum + (a.duration_minutes || 0), 0) / 60 / days * 7) * 10) / 10,
       
       // Répartition par type
-      activities_by_type: activities.reduce((acc: any, activity) => {
+      activities_by_type: activities.reduce((acc: any, activity: any) => {
         acc[activity.type] = (acc[activity.type] || 0) + 1;
         return acc;
       }, {}),
       
       // Performance moyenne (courses uniquement)
       running_stats: (() => {
-        const runs = activities.filter(a => a.type === 'Run' && a.distance_km > 0);
+        const runs = activities.filter((a: any) => a.type === 'Run' && a.distance_km > 0);
         if (runs.length === 0) return null;
         
         return {
           total_runs: runs.length,
-          total_distance_km: Math.round(runs.reduce((sum, r) => sum + (r.distance_km || 0), 0) * 10) / 10,
+          total_distance_km: Math.round(runs.reduce((sum, r: any) => sum + (r.distance_km || 0), 0) * 10) / 10,
           avg_pace_min_per_km: runs.length > 0 ? 
-            Math.round(runs.reduce((sum, r) => sum + (r.duration_minutes || 0) / (r.distance_km || 1), 0) / runs.length * 10) / 10 : null,
-          avg_distance_per_run_km: Math.round(runs.reduce((sum, r) => sum + (r.distance_km || 0), 0) / runs.length * 10) / 10
+            Math.round(runs.reduce((sum, r: any) => sum + (r.duration_minutes || 0) / (r.distance_km || 1), 0) / runs.length * 10) / 10 : null,
+          avg_distance_per_run_km: Math.round(runs.reduce((sum, r: any) => sum + (r.distance_km || 0), 0) / runs.length * 10) / 10
         };
       })()
     };
