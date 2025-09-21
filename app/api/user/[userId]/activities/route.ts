@@ -1,4 +1,4 @@
-// app/api/user/[userId]/activities/route.ts
+// app/api/user/[userId]/activities/route.ts - push
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRawActivities } from '@/lib/activity-processor';
