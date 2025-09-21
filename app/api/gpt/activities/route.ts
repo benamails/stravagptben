@@ -4,6 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRawActivities, getActivityDate, isActivityRecent } from '@/lib/activity-processor';
 import { getActivityDetails, hasActivityDetails } from '@/lib/redis';
 
+type FlexibleStravaActivity = StravaActivity & {
+  [key: string]: any;
+};
+const activity = allActivities[i] as FlexibleStravaActivity;
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const userId = parseInt(searchParams.get('user_id') || '14060676');
