@@ -56,7 +56,7 @@ async function processActivity(activity: StravaActivity, ownerId: number): Promi
   try {
     console.log(`🔄 Traitement de l'activité ${activity.id} pour l'utilisateur ${ownerId}`);
     
-    // ⭐ NOUVEAU : Stocker l'activité brute avec tracking
+    // ⭐ Stocker l'activité brute avec tracking
     await storeRawActivity(activity, ownerId);
     
     // ⭐ Récupérer les détails pour les activités de course
@@ -73,7 +73,7 @@ async function processActivity(activity: StravaActivity, ownerId: number): Promi
   }
 }
 
-// ⭐ NOUVELLE FONCTION : Stocker l'activité brute avec tracking timestamp
+// ⭐ Stocker l'activité brute avec tracking timestamp
 async function storeRawActivity(activity: StravaActivity, ownerId: number): Promise<void> {
   try {
     // Ajouter quelques métadonnées utiles
@@ -98,7 +98,7 @@ async function storeRawActivity(activity: StravaActivity, ownerId: number): Prom
     // Garder seulement les 500 dernières activités dans la liste
     await redis.ltrim('activities:ids', 0, 499);
     
-    // ⭐ NOUVEAU: Tracker la dernière activité
+    // ⭐ Tracker la dernière activité
     await updateLastActivityTimestamp(activity.start_date);
     
     console.log(`💾 Activité brute stockée: ${key}`);
@@ -109,7 +109,7 @@ async function storeRawActivity(activity: StravaActivity, ownerId: number): Prom
   }
 }
 
-// ⭐ NOUVELLE FONCTION : Mettre à jour le timestamp de dernière activité
+// ⭐ Mettre à jour le timestamp de dernière activité
 async function updateLastActivityTimestamp(activityDate: string): Promise<void> {
   try {
     const { default: redis } = await import('./redis');
@@ -119,7 +119,7 @@ async function updateLastActivityTimestamp(activityDate: string): Promise<void> 
     const currentTimestamp = await redis.get('activities:last_activity');
     
     // Mettre à jour seulement si plus récent
-    if (!currentTimestamp || timestamp > parseInt(currentTimestamp)) {
+    if (!currentTimestamp || timestamp > parseInt(currentTimestamp.toString())) {
       await redis.set('activities:last_activity', timestamp.toString());
       console.log(`📅 Dernière activité mise à jour: ${activityDate}`);
     }
@@ -188,13 +188,15 @@ async function refreshUserToken(userId: number, refreshToken: string): Promise<S
   }
 }
 
-// Fonction utilitaire pour récupérer les activités brutes
+// ⭐ FONCTION INTELLIGENTE : Récupérer les activités brutes avec filtre flexible
 export async function getUserRawActivities(userId: number, limit: number = 10): Promise<StravaActivity[]> {
   try {
     const { default: redis } = await import('./redis');
     
     // Récupérer la liste des IDs d'activités depuis la liste globale
-    const activityIds = await redis.lrange('activities:ids', 0, limit - 1);
+    const activityIds = await redis.lrange('activities:ids', 0, limit * 3); // Plus pour filtrer
+    
+    console.log(`📋 Récupération de ${activityIds.length} IDs d'activités`);
     
     // Récupérer les données complètes de chaque activité
     const activities: StravaActivity[] = [];
@@ -208,12 +210,25 @@ export async function getUserRawActivities(userId: number, limit: number = 10): 
           ? JSON.parse(activityData) 
           : activityData;
         
-        // Filtrer par userId si spécifié
-        if (parsedActivity.userId === userId || !userId) {
+        // ⭐ LOGIQUE INTELLIGENTE : Filtrage flexible selon la disponibilité des données
+        const activityUserId = parsedActivity.userId || parsedActivity.owner_id;
+        
+        // Si pas de userId dans l'activité, on la prend quand même (anciennes activités)
+        // Si userId demandé et présent dans l'activité, on filtre
+        const shouldInclude = !activityUserId || activityUserId === userId;
+        
+        if (shouldInclude) {
           activities.push(parsedActivity);
+          
+          // Arrêter si on a assez d'activités
+          if (activities.length >= limit) {
+            break;
+          }
         }
       }
     }
+    
+    console.log(`✅ ${activities.length} activités récupérées pour userId=${userId}`);
     
     return activities;
   } catch (error) {
@@ -222,20 +237,20 @@ export async function getUserRawActivities(userId: number, limit: number = 10): 
   }
 }
 
-// ⭐ NOUVELLE FONCTION : Récupérer le timestamp de dernière activité
+// ⭐ Récupérer le timestamp de dernière activité
 export async function getLastActivityTimestamp(): Promise<number | null> {
   try {
     const { default: redis } = await import('./redis');
     const timestamp = await redis.get('activities:last_activity');
     
-    return timestamp ? parseInt(timestamp) : null;
+    return timestamp ? parseInt(timestamp.toString()) : null;
   } catch (error) {
     console.error('❌ Erreur récupération timestamp:', error);
     return null;
   }
 }
 
-// ⭐ NOUVELLE FONCTION : Initialiser le timestamp si pas présent
+// ⭐ Initialiser le timestamp si pas présent
 export async function initializeLastActivityTimestamp(): Promise<void> {
   try {
     const { default: redis } = await import('./redis');
