@@ -1,3 +1,5 @@
+// scripts/debug-strava-credentials.ts
+
 import { config } from 'dotenv';
 
 // Charger les variables d'environnement
