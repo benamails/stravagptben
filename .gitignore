@@ -1,5 +1,11 @@
 node_modules/
-.env
+.env.local
 *.log
 dist/
 .DS_Store
+openai.yaml
+doc-dev.md
+data/
+*.py
+*.zip
+.next

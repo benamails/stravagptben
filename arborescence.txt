@@ -1,0 +1,46 @@
+stravagpt/
+├── .env.local
+├── .gitignore
+├── app/
+│   ├── api/
+│   │   ├── activities/
+│   │   │   └── route.ts
+│   │   ├── activity/
+│   │   │   ├── [ID]/
+│   │   │   │   └── route.ts
+│   │   │   └── route.ts
+│   │   ├── auth/
+│   │   │   └── strava/
+│   │   │       ├── callback/
+│   │   │       │   └── route.ts
+│   │   │       └── route.ts
+│   │   ├── debug/
+│   │   │   └── route.ts
+│   │   ├── strava-webhook/
+│   │   │   └── route.ts
+│   │   ├── test-redis/
+│   │   │   └── route.ts
+│   │   └── user/
+│   │       └── [userId]/
+│   │           └── activities/
+│   │               └── route.ts
+│   ├── auth/
+│   │   └── success/
+│   │       └── page.tsx
+│   └── layout.tsx
+├── lib/
+│   ├── activity-processor.ts
+│   ├── redis.ts
+│   └── strava-client.ts
+├── next-env.d.ts
+├── next.config.mjs
+├── openai.yaml
+├── package-lock.json
+├── package.json
+├── scripts/
+│   ├── create-webhook-subscription.ts
+│   └── debug-strava-credentials.ts
+├── tsconfig.json
+└── types/
+    ├── activity.ts
+    └── strava.ts
