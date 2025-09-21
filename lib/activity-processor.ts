@@ -2,7 +2,37 @@
 
 import { StravaClient } from './strava-client';
 import { getStoredUserToken, storeUserToken, storeActivityDetails } from './redis';
-import { StravaActivity, StravaTokens, StravaActivityDetails } from '@/types/strava';
+import { StravaTokens, StravaActivityDetails } from '@/types/strava';
+
+// ⭐ Type flexible au lieu de StravaActivity strict
+type FlexibleStravaActivity = {
+  id: number;
+  name?: string;
+  type: string;
+  start_date?: string;
+  date?: string;
+  start_date_local?: string;
+  moving_time?: number;
+  elapsed_time?: number;
+  distance?: number;
+  average_speed?: number;
+  max_speed?: number;
+  total_elevation_gain?: number;
+  average_heartrate?: number;
+  max_heartrate?: number;
+  average_watts?: number;
+  max_watts?: number;
+  average_cadence?: number;
+  calories?: number;
+  suffer_score?: number;
+  commute?: boolean;
+  trainer?: boolean;
+  manual?: boolean;
+  achievement_count?: number;
+  kudos_count?: number;
+  average_temp?: number;
+  [key: string]: any;
+};
 
 export async function fetchAndProcessActivity(activityId: number, ownerId: number): Promise<void> {
   try {
@@ -33,7 +63,7 @@ export async function fetchAndProcessActivity(activityId: number, ownerId: numbe
     });
     
     // Traiter l'activité selon tes besoins
-    await processActivity(activity, ownerId);
+    await processActivity(activity as FlexibleStravaActivity, ownerId);
     
   } catch (error) {
     console.error('❌ Erreur lors du traitement de l\'activité:', error);
@@ -52,7 +82,7 @@ export async function fetchAndProcessActivity(activityId: number, ownerId: numbe
   }
 }
 
-async function processActivity(activity: StravaActivity, ownerId: number): Promise<void> {
+async function processActivity(activity: FlexibleStravaActivity, ownerId: number): Promise<void> {
   try {
     console.log(`🔄 Traitement de l'activité ${activity.id} pour l'utilisateur ${ownerId}`);
     
@@ -60,7 +90,7 @@ async function processActivity(activity: StravaActivity, ownerId: number): Promi
     await storeRawActivity(activity, ownerId);
     
     // ⭐ Récupérer les détails pour les activités de course
-    if (StravaClient.shouldFetchDetails(activity)) {
+    if (StravaClient.shouldFetchDetails(activity as any)) {
       console.log(`🏃 Récupération des détails pour l'activité de type ${activity.type}`);
       await fetchAndStoreActivityDetails(activity.id, ownerId);
     }
@@ -74,7 +104,7 @@ async function processActivity(activity: StravaActivity, ownerId: number): Promi
 }
 
 // ⭐ Stocker l'activité brute avec tracking timestamp
-async function storeRawActivity(activity: StravaActivity, ownerId: number): Promise<void> {
+async function storeRawActivity(activity: FlexibleStravaActivity, ownerId: number): Promise<void> {
   try {
     // Ajouter quelques métadonnées utiles
     const enrichedActivity = {
@@ -99,13 +129,110 @@ async function storeRawActivity(activity: StravaActivity, ownerId: number): Prom
     await redis.ltrim('activities:ids', 0, 499);
     
     // ⭐ Tracker la dernière activité
-    await updateLastActivityTimestamp(activity.start_date);
+    await updateLastActivityTimestamp(activity.start_date || activity.date || '');
     
     console.log(`💾 Activité brute stockée: ${key}`);
     
   } catch (error) {
     console.error('❌ Erreur lors du stockage de l\'activité brute:', error);
     throw error;
+  }
+}
+
+// Le reste du code reste identique avec les types FlexibleStravaActivity...
+
+// ⭐ FONCTION INTELLIGENTE : Récupérer les activités brutes avec gestion multi-format des dates
+export async function getUserRawActivities(userId: number, limit: number = 10): Promise<FlexibleStravaActivity[]> {
+  try {
+    const { default: redis } = await import('./redis');
+    
+    // Récupérer la liste des IDs d'activités depuis la liste globale
+    const activityIds = await redis.lrange('activities:ids', 0, limit * 3); // Plus pour filtrer
+    
+    console.log(`📋 Récupération de ${activityIds.length} IDs d'activités`);
+    
+    // Récupérer les données complètes de chaque activité
+    const activities: FlexibleStravaActivity[] = [];
+    
+    for (const activityId of activityIds) {
+      const activityKey = `activity:${activityId}`;
+      const activityData = await redis.get(activityKey);
+      
+      if (activityData) {
+        const parsedActivity = typeof activityData === 'string' 
+          ? JSON.parse(activityData) 
+          : activityData;
+        
+        // ⭐ LOGIQUE INTELLIGENTE : Filtrage flexible selon la disponibilité des données
+        const activityUserId = parsedActivity.userId || parsedActivity.owner_id;
+        
+        // Si pas de userId dans l'activité, on la prend quand même (anciennes activités)
+        // Si userId demandé et présent dans l'activité, on filtre
+        const shouldInclude = !activityUserId || activityUserId === userId;
+        
+        if (shouldInclude) {
+          activities.push(parsedActivity as FlexibleStravaActivity);
+          
+          // Arrêter si on a assez d'activités
+          if (activities.length >= limit) {
+            break;
+          }
+        }
+      }
+    }
+    
+    // ⭐ CORRECTION : Tri intelligent avec gestion multi-format des dates
+    activities.sort((a, b) => {
+      // Chercher la date dans plusieurs champs possibles (anciennes vs nouvelles activités)
+      const dateA = a.start_date || a.date || a.start_date_local;
+      const dateB = b.start_date || b.date || b.start_date_local;
+      
+      if (!dateA || !dateB) return 0;
+      
+      try {
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      } catch (e) {
+        return 0; // En cas d'erreur de parsing de date
+      }
+    });
+    
+    console.log(`✅ ${activities.length} activités récupérées pour userId=${userId}`);
+    
+    return activities;
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des activités brutes:', error);
+    return [];
+  }
+}
+
+// Reste des fonctions avec les bons types...
+
+function isTokenExpired(tokenData: StravaTokens): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  const bufferTime = 300; // 5 minutes de marge
+  return now >= (tokenData.expires_at - bufferTime);
+}
+
+async function refreshUserToken(userId: number, refreshToken: string): Promise<StravaTokens> {
+  try {
+    const stravaClient = new StravaClient(''); // Token vide pour le refresh
+    const newTokenData = await stravaClient.refreshToken(refreshToken);
+    
+    const tokens: StravaTokens = {
+      access_token: newTokenData.access_token,
+      refresh_token: newTokenData.refresh_token,
+      expires_at: newTokenData.expires_at,
+      token_type: newTokenData.token_type
+    };
+    
+    // Stocker les nouveaux tokens
+    await storeUserToken(userId, tokens);
+    console.log(`✅ Token rafraîchi pour l'utilisateur ${userId}`);
+    
+    return tokens;
+  } catch (error) {
+    console.error(`❌ Erreur lors du refresh token pour l'utilisateur ${userId}:`, error);
+    throw new Error(`Impossible de rafraîchir le token: ${error}`);
   }
 }
 
@@ -159,100 +286,7 @@ async function fetchAndStoreActivityDetails(activityId: number, ownerId: number)
   }
 }
 
-function isTokenExpired(tokenData: StravaTokens): boolean {
-  const now = Math.floor(Date.now() / 1000);
-  const bufferTime = 300; // 5 minutes de marge
-  return now >= (tokenData.expires_at - bufferTime);
-}
-
-async function refreshUserToken(userId: number, refreshToken: string): Promise<StravaTokens> {
-  try {
-    const stravaClient = new StravaClient(''); // Token vide pour le refresh
-    const newTokenData = await stravaClient.refreshToken(refreshToken);
-    
-    const tokens: StravaTokens = {
-      access_token: newTokenData.access_token,
-      refresh_token: newTokenData.refresh_token,
-      expires_at: newTokenData.expires_at,
-      token_type: newTokenData.token_type
-    };
-    
-    // Stocker les nouveaux tokens
-    await storeUserToken(userId, tokens);
-    console.log(`✅ Token rafraîchi pour l'utilisateur ${userId}`);
-    
-    return tokens;
-  } catch (error) {
-    console.error(`❌ Erreur lors du refresh token pour l'utilisateur ${userId}:`, error);
-    throw new Error(`Impossible de rafraîchir le token: ${error}`);
-  }
-}
-
-// ⭐ FONCTION INTELLIGENTE : Récupérer les activités brutes avec gestion multi-format des dates
-export async function getUserRawActivities(userId: number, limit: number = 10): Promise<StravaActivity[]> {
-  try {
-    const { default: redis } = await import('./redis');
-    
-    // Récupérer la liste des IDs d'activités depuis la liste globale
-    const activityIds = await redis.lrange('activities:ids', 0, limit * 3); // Plus pour filtrer
-    
-    console.log(`📋 Récupération de ${activityIds.length} IDs d'activités`);
-    
-    // Récupérer les données complètes de chaque activité
-    const activities: StravaActivity[] = [];
-    
-    for (const activityId of activityIds) {
-      const activityKey = `activity:${activityId}`;
-      const activityData = await redis.get(activityKey);
-      
-      if (activityData) {
-        const parsedActivity = typeof activityData === 'string' 
-          ? JSON.parse(activityData) 
-          : activityData;
-        
-        // ⭐ LOGIQUE INTELLIGENTE : Filtrage flexible selon la disponibilité des données
-        const activityUserId = parsedActivity.userId || parsedActivity.owner_id;
-        
-        // Si pas de userId dans l'activité, on la prend quand même (anciennes activités)
-        // Si userId demandé et présent dans l'activité, on filtre
-        const shouldInclude = !activityUserId || activityUserId === userId;
-        
-        if (shouldInclude) {
-          activities.push(parsedActivity);
-          
-          // Arrêter si on a assez d'activités
-          if (activities.length >= limit) {
-            break;
-          }
-        }
-      }
-    }
-    
-    // ⭐ CORRECTION : Tri intelligent avec gestion multi-format des dates
-    activities.sort((a, b) => {
-      // Chercher la date dans plusieurs champs possibles (anciennes vs nouvelles activités)
-      const dateA = a.start_date || a.date || a.start_date_local;
-      const dateB = b.start_date || b.date || b.start_date_local;
-      
-      if (!dateA || !dateB) return 0;
-      
-      try {
-        return new Date(dateB).getTime() - new Date(dateA).getTime();
-      } catch (e) {
-        return 0; // En cas d'erreur de parsing de date
-      }
-    });
-    
-    console.log(`✅ ${activities.length} activités récupérées pour userId=${userId}`);
-    
-    return activities;
-  } catch (error) {
-    console.error('❌ Erreur lors de la récupération des activités brutes:', error);
-    return [];
-  }
-}
-
-// ⭐ Récupérer le timestamp de dernière activité
+// Autres fonctions utilitaires
 export async function getLastActivityTimestamp(): Promise<number | null> {
   try {
     const { default: redis } = await import('./redis');
@@ -265,7 +299,6 @@ export async function getLastActivityTimestamp(): Promise<number | null> {
   }
 }
 
-// ⭐ Initialiser le timestamp si pas présent
 export async function initializeLastActivityTimestamp(): Promise<void> {
   try {
     const { default: redis } = await import('./redis');
@@ -308,8 +341,7 @@ export async function initializeLastActivityTimestamp(): Promise<void> {
   }
 }
 
-// ⭐ NOUVELLE FONCTION : Récupérer une activité spécifique avec gestion des dates
-export async function getActivityById(activityId: number): Promise<StravaActivity | null> {
+export async function getActivityById(activityId: number): Promise<FlexibleStravaActivity | null> {
   try {
     const { default: redis } = await import('./redis');
     
@@ -320,7 +352,7 @@ export async function getActivityById(activityId: number): Promise<StravaActivit
         ? JSON.parse(activityData) 
         : activityData;
       
-      return parsedActivity;
+      return parsedActivity as FlexibleStravaActivity;
     }
     
     return null;
@@ -330,13 +362,11 @@ export async function getActivityById(activityId: number): Promise<StravaActivit
   }
 }
 
-// ⭐ FONCTION UTILITAIRE : Extraire la date d'une activité de manière intelligente
 export function getActivityDate(activity: any): string | null {
   // Ordre de priorité pour les champs de date
   return activity.start_date || activity.date || activity.start_date_local || null;
 }
 
-// ⭐ FONCTION UTILITAIRE : Vérifier si une activité est récente
 export function isActivityRecent(activity: any, daysBack: number = 7): boolean {
   const activityDate = getActivityDate(activity);
   
